@@ -7,7 +7,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func randonMatch(client *Client, s *Server) {
+func randomMatch(client *Client, s *Server) {
+	s.mu.Lock()
 	s.randomMatchQueue = append(s.randomMatchQueue, client)
 	if len(s.randomMatchQueue) >= 2 {
 		match := s.randomMatchQueue[:2]
@@ -20,7 +21,6 @@ func randonMatch(client *Client, s *Server) {
 		match[0].room = append(match[0].room, randomRoomName)
 		match[1].room = append(match[1].room, randomRoomName)
 		s.randomMatchQueue = s.randomMatchQueue[2:]
-
 		// Send the room name to both matched clients
 		matchMessage := fmt.Sprintf("RANDOM_MATCH: %s", randomRoomName)
 		match[0].conn.WriteMessage(websocket.TextMessage, []byte(matchMessage))
@@ -33,6 +33,8 @@ func randonMatch(client *Client, s *Server) {
 		// If there's only one client in the queue, inform them they're waiting
 		client.conn.WriteMessage(websocket.TextMessage, []byte("Waiting for a match..."))
 	}
+	fmt.Println(s.randomMatchQueue)
+	s.mu.Unlock()
 }
 
 func generateRandomString(length int) string {

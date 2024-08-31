@@ -186,21 +186,34 @@
         let currentRoom = '';
         let username = '';
         let lastSentMessage = ''; // Add this line to track the last sent message
+        let roomListInterval; // Add this line to store the interval ID
 
         function connect() {
+            ifusername = false
             socket = new WebSocket('ws://localhost:8080/ws');
 
             socket.onopen = function (e) {
                 console.log("Connected to WebSocket");
                 document.getElementById('connection-container').style.display = 'none';
                 document.getElementById('chat-container').style.display = 'block';
+
+                roomListInterval = setInterval(getRooms, 120000);
+                // Get rooms immediately after connecting
+                getRooms();
             };
 
             socket.onmessage = function (event) {
                 const messages = document.getElementById('messages');
                 const messageElement = document.createElement('div');
+                if (ifusername == false) {
+                    username = event.data;
+                    ifusername = true;
+                }
 
-                if (event.data.startsWith("RANDOM_MATCH:")) {
+                if (event.data.startsWith("ROOMS:")) {
+                    const rooms = event.data.split(":")[1].split(",");
+                    updateRoomList(rooms);
+                } else if (event.data.startsWith("RANDOM_MATCH:")) {
                     const roomName = event.data.split(":")[1].trim();
                     currentRoom = roomName;
                     document.getElementById('room-input').value = roomName; // 更新UI
@@ -209,30 +222,29 @@
                 } else if (event.data === "WAITING_FOR_MATCH") {
                     showStatusMessage("Waiting for a match...");
                 } else {
-                    // 解析消息以提取發送者和內容
+
                     const [sender, content] = event.data.split(': ', 2);
 
                     if (content) {
-                        // 這是一條聊天消息
+
                         if (sender === username) {
-                            // 本地用戶的消息
+
                             messageElement.textContent = 'You: ' + content;
                             messageElement.className = 'user-message';
                         } else {
-                            // 其他用戶的消息
+
                             messageElement.textContent = sender + ': ' + content;
                             messageElement.className = 'other-message';
                         }
                         messages.appendChild(messageElement);
 
-                        // 消息後清除浮動
                         const clearDiv = document.createElement('div');
                         clearDiv.style.clear = 'both';
                         messages.appendChild(clearDiv);
 
                         messages.scrollTop = messages.scrollHeight;
                     } else {
-                        // 這是一條系統消息
+
                         messageElement.textContent = event.data;
                         messageElement.className = 'system-message';
                         messages.appendChild(messageElement);
@@ -240,23 +252,38 @@
                     }
                 }
             };
+
+            window.onbeforeunload = function () {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    sendControlMessage('disconnect', currentRoom);
+                    clearInterval(roomListInterval);
+                }
+            };
         }
+
         function updateRoomList(rooms) {
-            const roomList = document.getElementById('room-list');
-            roomList.innerHTML = '<h3>Available Rooms:</h3>';
-            if (rooms.length > 0) {
+            const roomListElement = document.getElementById('room-list');
+            roomListElement.innerHTML = '<h3>Available Rooms</h3>';
+
+            if (rooms.length === 0 || (rooms.length === 1 && rooms[0] === '')) {
+                const p = document.createElement('p');
+                p.textContent = 'No rooms available. Create one to get started!';
+                p.style.fontStyle = 'italic';
+                p.style.color = '#666';
+                roomListElement.appendChild(p);
+            } else {
                 const ul = document.createElement('ul');
                 rooms.forEach(room => {
-                    const li = document.createElement('li');
-                    li.textContent = room;
-                    li.onclick = function () {
-                        document.getElementById('room-input').value = room;
-                    };
-                    ul.appendChild(li);
+                    if (room !== '') {
+                        const li = document.createElement('li');
+                        li.textContent = room;
+                        li.onclick = function () {
+                            document.getElementById('room-input').value = room;
+                        };
+                        ul.appendChild(li);
+                    }
                 });
-                roomList.appendChild(ul);
-            } else {
-                roomList.innerHTML += '<p>No rooms available. Create a new one!</p>';
+                roomListElement.appendChild(ul);
             }
         }
 
@@ -302,7 +329,6 @@
                 type: type,
                 room: room,
                 broadcast_message: message,
-                username: username
             };
             console.log("Sending control message:", controlMessage);
             socket.send(JSON.stringify(controlMessage));
@@ -321,9 +347,15 @@
         }
 
         function randomMatch() {
-            currentRoom = ''; // Clear current room
+            currentRoom = '';
             sendControlMessage('randomMatch', '');
             showStatusMessage("Requesting a random match...");
+        }
+
+        function getRooms() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                sendControlMessage('getRooms', '');
+            }
         }
     </script>
 </body>
